@@ -1,0 +1,135 @@
+import pandas as pd
+import numpy as np
+
+path = 'Users/sebastianpriest/Dropbox/Seb/Data Projects/Premier League Results/'
+
+# Importing the data
+raw_data = pd.read_csv('../input/premresultsedited/results-EDITED.csv', encoding = 'ISO-8859-1')
+
+# Creates a list of the seasons we want to use data from
+desirable_seasons = []
+for i in range(4):
+    yr = 22
+    season = str(2000 + yr - 1 - i) + '-' + str(yr - i)
+    desirable_seasons.append(season)
+    
+# Selecting data so only includes these seasons 
+data = raw_data.loc[raw_data["Season"].isin(desirable_seasons)]
+data = data[["Season", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR"]]
+data = data.reset_index(drop = True)
+
+# Defining our main simulation function that takes the Home and Away teams plus the data for that fixture and the data for the reverse.
+def score_pois_n(Home, Away, fixture_data, rev_fixture_data):
+
+    # Choosing how many simulations to run
+    n = 500
+
+    # Defining a nested function 
+    def avg_goals_pois(Home, Away):
+        
+        # Calculating the average parameters to simulate with, weighting the games played in the specific Home-Away configuration more heavily
+        avg_hg = 0.75 * (fixture_data["FTHG"].mean()) + 0.25 * (rev_fixture_data["FTAG"].mean())
+        avg_ag = 0.75 * (fixture_data["FTAG"].mean()) + 0.25 * (rev_fixture_data["FTHG"].mean())
+
+        # Simulating a Poisson process using these averages
+        pois_hg = np.random.poisson(avg_hg)
+        pois_ag = np.random.poisson(avg_ag)
+
+        return str(pois_hg) + "," + str(pois_ag)
+    
+    x = 0
+    simulations = []
+    while x < n:
+        simulations.append(str(avg_goals_pois(Home,Away)))
+        x += 1
+
+    simulations = pd.DataFrame(simulations, columns = ["HG,AG"])
+    freq_table = pd.crosstab(index=simulations["HG,AG"], columns = "Frequency")
+    freq_table = freq_table.reset_index(level=0)
+    
+    freq_table["Probability"] = freq_table["Frequency"]/ sum(freq_table["Frequency"])
+    freq_table["Percentage"] = freq_table["Probability"] * 100
+    
+    
+    def hw_aw_or_d(score):
+        hg_ag = score.split(",", 1)
+        
+        if hg_ag[0] > hg_ag[-1]:
+            return "H"
+        elif hg_ag[0] < hg_ag[-1]:
+            return "A"
+        else:
+            return "D"
+        
+                
+    freq_table["RESULT"] = freq_table["HG,AG"].apply(hw_aw_or_d)
+    
+    def predicted_odds(freq_table):
+        
+        hw_prob = freq_table.loc[freq_table["RESULT"] == "H"].Probability.sum()
+        aw_prob = freq_table.loc[freq_table["RESULT"] == "A"].Probability.sum()
+        d_prob = freq_table.loc[freq_table["RESULT"] == "D"].Probability.sum()
+        
+        results_table = pd.DataFrame([[(100 * hw_prob), (100 * aw_prob), (100 * d_prob)]],
+                                     columns =["H", "A", "D"], 
+                                     index = [ "Percentage"])
+        results_table = results_table.round(2)
+        
+
+        return results_table
+    
+    odds_table = predicted_odds(freq_table)
+    
+    odds_table_trans = odds_table.transpose()
+    
+    most_prob = [odds_table_trans["Percentage"].idxmax(axis = 0), odds_table_trans["Percentage"].max(axis = 0)]
+    
+    
+    
+    return most_prob
+
+
+
+def match_sim(Home, Away):
+    fixture_data = data.loc[(data["HomeTeam"] == Home) & (data["AwayTeam"] == Away)]
+    rev_fixture_data = data.loc[(data["HomeTeam"] == Away) & (data["AwayTeam"] == Home)]
+    
+    if len(fixture_data) < 3: 
+        return [float("NaN"),float("NaN")]
+    else:
+        return score_pois_n(Home, Away, fixture_data, rev_fixture_data)
+        
+
+
+#match_sim(Home, Away, data)
+
+
+
+
+
+
+ARS = "Arsenal"
+AVL = "Aston Villa"
+BRE = "Brentford"
+BRI = "Brighton"
+BUR = "Burnley"
+
+CHE = "Chelsea"
+CRY = "Crystal Palace"
+EVE = "Everton"
+LEE = "Leeds"
+LEI = "Leicester"
+
+LIV = "Liverpool"
+MCI = "Man City"
+MUN = "Man United"
+NEW = "Newcastle"
+NOR = "Norwich"
+
+SOU = "Southampton"
+TOT = "Tottenham"
+WAT = "Watford"
+WHU = "West Ham"
+WOL = "Wolves"
+BOU = "Bournemouth"
+FUL = "Fulham"
